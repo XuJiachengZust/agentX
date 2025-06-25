@@ -6,31 +6,34 @@ from langchain_core.messages import AIMessage, BaseMessage, ToolMessage, HumanMe
 from langchain_openai import ChatOpenAI
 from langgraph.constants import END, START
 from langgraph.graph import StateGraph, add_messages
+from langgraph.checkpoint.memory import MemorySaver
 
 
 class State(TypedDict):
     messages: Annotated[List[BaseMessage], add_messages]
 
+
 class ChatApp:
     def __init__(self):
-        # 初始化对话历史
-        self.history = []  # 存储所有消息的历史记录
-
         # 设置环境变量
         os.environ["TAVILY_API_KEY"] = "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"
         os.environ["OPENAI_BASE_URL"] = "https://api.gptsapi.net/v1"
         os.environ["OPENAI_API_KEY"] = "sk-oR4bed2c6c453572fa5a5fc1ee4822dc065976d3071BIQLR"
+
+        # 初始化记忆存储
+        self.memory = MemorySaver()
+        self.config = {"configurable": {"thread_id": "default_thread"}}  # 使用字符串thread_id
 
         # 初始化模型
         self.llm = ChatOpenAI(
             model='gpt-4o',
             api_key=os.getenv("OPENAI_API_KEY"),
             base_url=os.getenv("OPENAI_BASE_URL"),
-            temperature=0.5  # 略微提高温度使回复更有创意
+            temperature=0.5
         )
 
         # 初始化工具
-        search = TavilySearchResults(max_results=3)  # 增加搜索结果数量
+        search = TavilySearchResults(max_results=3)
         self.tools = [search]
 
         # 构建状态图
@@ -59,9 +62,9 @@ class ChatApp:
         graph_builder.add_edge("tools", "chatbot")
         graph_builder.add_edge(START, "chatbot")
 
-        # 设置入口点并编译图
+        # 设置入口点并编译图（添加记忆存储）
         graph_builder.set_entry_point("chatbot")
-        return graph_builder.compile()
+        return graph_builder.compile(checkpointer=self.memory)
 
     def _chatbot(self, state: State):
         """带上下文记忆的聊天节点"""
@@ -110,25 +113,33 @@ class ChatApp:
 
     def process_user_input(self, user_input: str):
         """处理用户输入并返回助手响应"""
-        # 添加用户消息到历史
-        self.history.append(HumanMessage(content=user_input))
-
-        # 构建当前状态（包含所有历史）
-        current_state = {"messages": self.history.copy()}
+        # 创建用户消息
+        user_message = HumanMessage(content=user_input)
 
         # 存储最终响应
         final_response = None
 
-        # 处理图更新
-        for event in self.graph.stream(current_state):
-            for key, update in event.items():
-                if key != "__end__" and "messages" in update:
-                    # 更新历史记录
-                    self.history.extend(update["messages"])
+        # 处理图更新 - 修复事件处理逻辑
+        events = []
+        for event in self.graph.stream(
+                {"messages": [user_message]},
+                self.config,
+                stream_mode="values"
+        ):
+            events.append(event)
+            # 检查是否有消息更新
+            if "messages" in event:
+                messages = event["messages"]
+                if messages and isinstance(messages[-1], AIMessage):
+                    final_response = messages[-1].content
 
-                    # 捕获最终响应
-                    if update["messages"] and isinstance(update["messages"][-1], AIMessage):
-                        final_response = update["messages"][-1].content
+        # 如果没有从事件中获取响应，尝试从最终状态获取
+        if not final_response and events:
+            last_event = events[-1]
+            if "messages" in last_event:
+                messages = last_event["messages"]
+                if messages and isinstance(messages[-1], AIMessage):
+                    final_response = messages[-1].content
 
         return final_response
 
