@@ -2,7 +2,7 @@ fastapi==0.109.2
 uvicorn[standard]==0.27.1
 python-dotenv==1.0.1
 sqlalchemy==2.0.27
-pydantic[email]==2.6.1
+pydantic[email]==2.6.1          # 保持v2版本
 pydantic-settings==2.1.0
 alembic==1.13.1
 python-multipart==0.0.19
@@ -10,14 +10,15 @@ bcrypt==4.1.2
 python-jose[cryptography]==3.4.0
 passlib[bcrypt]==1.7.4
 fastmcp==2.0
+
+# LangChain生态 - 精简声明
 langgraph==0.3.24
 langchain==0.3.24
-langchain-community==0.3.24
-langchain-core==0.3.24
-langchain-openai==0.3.24
-langchain-community==0.3.24
-langchain-core==0.3.24
-langchain-openai==0.3.24
-langchain-community==0.3.24
-langchain-core==0.3.24
-langchain-openai==0.3.24
+langchain-community==0.3.24    # 只需声明1次
+langchain-core==0.3.24         # 只需声明1次
+langchain-openai==0.3.24       # 只需声明1次
+langchain-tavily==0.3.24
+
+# 必须添加的依赖
+langsmith>=0.0.85              # 解决原始错误的关键
+tavily-python>=0.3.0           # langchain-tavily的底层依赖
